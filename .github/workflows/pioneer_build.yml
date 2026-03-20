@@ -29,5 +29,10 @@ jobs:
           # Runs QEMU for 5s to ensure the kernel doesn't immediate panic
           timeout 5s qemu-system-i386 -drive format=raw,file=pioneer_os.bin,if=ide -display none || [ $? -eq 124 ]
 
-
+      - name: Upload Sovereign Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pioneer-os-image        # The name of the ZIP you will download
+          path: pioneer_os.bin          # The exact file name from your Makefile
+          if-no-files-found: error      # Stop the build if the file is missing 
           
