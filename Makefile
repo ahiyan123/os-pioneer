@@ -1,29 +1,26 @@
-# --- PIONEER OS ROOT FORGE ---
-TARGET = pioneer_os.bin
-CC = gcc
+# --- PIONEER OS 64-BIT FORGE ---
+TARGET = BOOTX64.EFI
 AS = nasm
+CC = gcc
 LD = ld
 
-# Flags for 32-bit Bare Metal
-CFLAGS = -m32 -ffreestanding -O2 -fno-pie -fno-stack-protector -nostdlib -Isrc
-LDFLAGS = -m elf_i386 -T src/linker.ld --oformat binary
+# 64-bit UEFI-compatible flags
+CFLAGS = -m64 -ffreestanding -fno-stack-protector -fno-stack-check -nostdlib -mno-red-zone
+# Use the 'i386pep' emulation for 64-bit PE (Windows/UEFI compatible)
+LDFLAGS = -m i386pep --subsystem 10 --entry _start
 
-# Objects stay in the root for easy cleanup
 OBJS = boot.o kernel.o
 
 all: $(TARGET)
-	@echo "Forge Complete: $(TARGET) created from src/ components."
 
-# Reach into src/ for the assembly
+# Compile boot.asm as a 64-bit win64 object (compatible with PE/COFF)
 boot.o: src/boot.asm
-	$(AS) -f elf32 src/boot.asm -o boot.o
+	$(AS) -f win64 src/boot.asm -o boot.o
 
-# Reach into src/ for the C kernel
 kernel.o: src/kernel.c
 	$(CC) $(CFLAGS) -c src/kernel.c -o kernel.o
 
-# Link using the linker script inside src/
-$(TARGET): $(OBJS) src/linker.ld
+$(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $(TARGET)
 
 clean:
