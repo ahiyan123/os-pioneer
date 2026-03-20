@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-// App Definitions
+// Sovereign App Definitions
 #define LIGHTPAD 1
 #define APPEL    2
 #define OUTVIE   3
@@ -8,35 +8,58 @@
 #define EXPLORE  5
 int current_app = EXPLORE;
 
-// FAT32 / Disk Constants
+// FAT32 / Disk Constants (Adjusted for 1.9GB)
 #define CLUSTER_BEGIN_LBA (32 + (2 * 3800))
 
 // I/O Helpers
-void outb(uint16_t p, uint8_t v) { asm volatile("outb %0, %1"::"a"(v),"Nd"(p)); }
-uint8_t inb(uint16_t p) { uint8_t r; asm volatile("inb %1, %0":"=a"(r):"Nd"(p)); return r; }
-void outw(uint16_t p, uint16_t v) { asm volatile("outw %0, %1"::"a"(v),"Nd"(p)); }
+static inline void outb(uint16_t port, uint8_t val) {
+    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
+}
 
-// Disk Writer
+static inline uint8_t inb(uint16_t port) {
+    uint8_t ret;
+    asm volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+static inline void outw(uint16_t port, uint16_t val) {
+    asm volatile("outw %0, %1" : : "a"(val), "Nd"(port));
+}
+
+// 64-bit Aware Print Logic
+void print(const char* s, int x, int y, char color) {
+    // ULL suffix ensures 64-bit pointer arithmetic
+    uint8_t* v = (uint8_t*)(0xB8000ULL + (y * 160) + (x * 2));
+    while(*s) {
+        *v++ = (uint8_t)*s++;
+        *v++ = (uint8_t)color;
+    }
+}
+
+void clear() {
+    uint8_t* v = (uint8_t*)0xB8000ULL;
+    for(int i = 0; i < 80 * 25 * 2; i += 2) {
+        v[i] = ' ';
+        v[i+1] = 0x07;
+    }
+}
+
+// Disk Writer (ATA PIO Mode)
 void disk_write(uint32_t lba, uint16_t* buffer) {
-    outb(0x1F6, (lba >> 24) | 0xE0);
+    outb(0x1F6, (uint8_t)((lba >> 24) | 0xE0));
     outb(0x1F2, 1);
     outb(0x1F3, (uint8_t)lba);
     outb(0x1F4, (uint8_t)(lba >> 8));
     outb(0x1F5, (uint8_t)(lba >> 16));
-    outb(0x1F7, 0x30); 
-    while (!(inb(0x1F7) & 0x08));
-    for (int i = 0; i < 256; i++) outw(0x1F0, buffer[i]);
+    outb(0x1F7, 0x30); // Write sectors command
+    
+    while (!(inb(0x1F7) & 0x08)); // Wait for DRQ
+    for (int i = 0; i < 256; i++) {
+        outw(0x1F0, buffer[i]);
+    }
 }
 
-void print(char* s, int x, int y, char color) {
-    char* v = (char*)(0xB8000 + (y * 160) + (x * 2));
-    while(*s) { *v++ = *s++; *v++ = color; }
-}
 
-void clear() {
-    char* v = (char*)0xB8000;
-    for(int i=0; i<80*25*2; i+=2) { v[i]=' '; v[i+1]=0x07; }
-}
 
 void refresh_ui() {
     clear();
@@ -46,8 +69,8 @@ void refresh_ui() {
     switch(current_app) {
         case LIGHTPAD:
             print(" [ LightPad ] - Private Text Editor ", 0, 0, 0x1F);
-            print(" Writing notes to FAT32 Cluster 2... ", 2, 2, 0x07);
-            uint16_t note[256] = {0}; // Simplified "Save"
+            print(" Saving to FAT32 Cluster 2... ", 2, 2, 0x07);
+            uint16_t note[256] = {0}; 
             disk_write(CLUSTER_BEGIN_LBA, note);
             break;
         case APPEL:
@@ -73,11 +96,12 @@ void refresh_ui() {
 void kernel_main() {
     refresh_ui();
     while(1) {
-        uint8_t sc = inb(0x60);
+        uint8_t sc = inb(0x60); // Keyboard Port
         if(sc >= 0x02 && sc <= 0x06) {
             current_app = sc - 0x01;
             refresh_ui();
-            for(int i=0; i<4000000; i++) asm volatile("nop");
+            // Basic debounce delay for Pioneer hardware
+            for(volatile long i = 0; i < 10000000; i++); 
         }
     }
 }
