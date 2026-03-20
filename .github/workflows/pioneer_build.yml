@@ -32,7 +32,7 @@ jobs:
       - name: Upload Sovereign Binary
         uses: actions/upload-artifact@v4
         with:
-          name: pioneer-os-image        # The name of the ZIP you will download
-          path: pioneer_os.bin          # The exact file name from your Makefile
+          name: BOOTX64.EFI Image        # The name of the ZIP you will download
+          path: BOOTX64.EFI          # The exact file name from your Makefile
           if-no-files-found: error      # Stop the build if the file is missing 
           
