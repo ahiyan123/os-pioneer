@@ -1,7 +1,6 @@
 #include <stdint.h>
 
-// --- OS CONSTANTS & APP STATES ---
-#define VIDEO_MEM 0xB8000
+// App Definitions
 #define LIGHTPAD 1
 #define APPEL    2
 #define OUTVIE   3
@@ -9,100 +8,76 @@
 #define EXPLORE  5
 int current_app = EXPLORE;
 
-// --- HARDWARE I/O ---
-void outb(uint16_t p, uint8_t v)  { asm volatile("outb %0, %1"::"a"(v),"Nd"(p)); }
-void outl(uint16_t p, uint32_t v) { asm volatile("outl %0, %1"::"a"(v),"Nd"(p)); }
-uint8_t inb(uint16_t p)           { uint8_t r; asm volatile("inb %1, %0":"=a"(r):"Nd"(p)); return r; }
-uint32_t inl(uint16_t p)          { uint32_t r; asm volatile("inl %1, %0":"=a"(r):"Nd"(p)); return r; }
+// FAT32 / Disk Constants
+#define CLUSTER_BEGIN_LBA (32 + (2 * 3800))
 
-// --- PCI & NETWORK (RTL8139) ---
-uint32_t io_base;
-void init_network() {
-    for(int bus=0; bus<256; bus++) {
-        for(int slot=0; slot<32; slot++) {
-            // Check Vendor 0x10EC, Device 0x8139
-            uint32_t id = (uint32_t)0x80000000 | (bus << 16) | (slot << 11);
-            outl(0xCF8, id);
-            if(inl(0xCFC) == 0x813910EC) {
-                outl(0xCF8, id | 0x10); // BAR0
-                io_base = inl(0xCFC) & ~0x1;
-                outb(io_base + 0x52, 0x00); // Power on
-                outb(io_base + 0x37, 0x10); // Reset
-                outb(io_base + 0x37, 0x0C); // Enable TX/RX
-                return;
-            }
-        }
-    }
+// I/O Helpers
+void outb(uint16_t p, uint8_t v) { asm volatile("outb %0, %1"::"a"(v),"Nd"(p)); }
+uint8_t inb(uint16_t p) { uint8_t r; asm volatile("inb %1, %0":"=a"(r):"Nd"(p)); return r; }
+void outw(uint16_t p, uint16_t v) { asm volatile("outw %0, %1"::"a"(v),"Nd"(p)); }
+
+// Disk Writer
+void disk_write(uint32_t lba, uint16_t* buffer) {
+    outb(0x1F6, (lba >> 24) | 0xE0);
+    outb(0x1F2, 1);
+    outb(0x1F3, (uint8_t)lba);
+    outb(0x1F4, (uint8_t)(lba >> 8));
+    outb(0x1F5, (uint8_t)(lba >> 16));
+    outb(0x1F7, 0x30); 
+    while (!(inb(0x1F7) & 0x08));
+    for (int i = 0; i < 256; i++) outw(0x1F0, buffer[i]);
 }
 
-// --- UI ENGINE ---
 void print(char* s, int x, int y, char color) {
-    char* v = (char*)(VIDEO_MEM + (y * 160) + (x * 2));
+    char* v = (char*)(0xB8000 + (y * 160) + (x * 2));
     while(*s) { *v++ = *s++; *v++ = color; }
 }
 
-void draw_rect(int x, int y, int w, int h, char color) {
-    for(int i=y; i<y+h; i++) {
-        for(int j=x; j<x+w; j++) {
-            char* v = (char*)(VIDEO_MEM + (i * 160) + (j * 2));
-            *v = ' '; *(v+1) = color;
-        }
+void clear() {
+    char* v = (char*)0xB8000;
+    for(int i=0; i<80*25*2; i+=2) { v[i]=' '; v[i+1]=0x07; }
+}
+
+void refresh_ui() {
+    clear();
+    print(" 1:LP | 2:AP | 3:OV | 4:PU | 5:EX ", 0, 24, 0x4F);
+    print(" Pioneer doesn't know to rest. ", 50, 24, 0x0E);
+
+    switch(current_app) {
+        case LIGHTPAD:
+            print(" [ LightPad ] - Private Text Editor ", 0, 0, 0x1F);
+            print(" Writing notes to FAT32 Cluster 2... ", 2, 2, 0x07);
+            uint16_t note[256] = {0}; // Simplified "Save"
+            disk_write(CLUSTER_BEGIN_LBA, note);
+            break;
+        case APPEL:
+            print(" [ Appel ] - Sovereign Word Processor ", 0, 0, 0x70);
+            print(" Everyone isn't same. ", 2, 2, 0x07);
+            break;
+        case OUTVIE:
+            print(" [ OutVie ] - No-Tracker Spreadsheet ", 0, 0, 0x2F);
+            print(" | C1 | C2 | C3 | ", 2, 2, 0x07);
+            break;
+        case PRESENTU:
+            print(" [ PresentU ] - Slideshow ", 0, 0, 0x5F);
+            print(" Slide 1: Escape the Product. ", 10, 10, 0x0F);
+            break;
+        case EXPLORE:
+            print(" [ ExploreFile ] - Storage Manager ", 0, 0, 0x3F);
+            print(" Total Disk Capacity: 1.9 GB ", 2, 2, 0x0A);
+            print(" File System: FAT32 [ACTIVE] ", 2, 3, 0x07);
+            break;
     }
 }
 
-// --- THE 5 SOVEREIGN APPS ---
-void run_lightpad() {
-    draw_rect(0, 0, 80, 25, 0x1F); // Blue
-    print(" [ LightPad ] - Private Text Editor ", 1, 0, 0x70);
-    print(" > Pioneer doesn't know to rest. ", 2, 2, 0x1F);
-}
-
-void run_appel() {
-    draw_rect(0, 0, 80, 25, 0x70); // White Paper
-    print(" [ Appel ] - Sovereign Word Processor ", 20, 0, 0x0F);
-    print("---------------------------------------", 20, 1, 0x07);
-}
-
-void run_outvie() {
-    draw_rect(0, 0, 80, 25, 0x2F); // Green Grid
-    print(" [ OutVie ] - No-Tracker Spreadsheet ", 1, 0, 0x0F);
-    for(int i=2; i<20; i+=2) print("|________|________|________|________|", 5, i, 0x2F);
-}
-
-void run_presentu() {
-    draw_rect(0, 0, 80, 25, 0x4F); // Red/Maroon
-    print(" [ PresentU ] ", 33, 10, 0x4F);
-    print(" Slide 1: Everyone isn't same. ", 25, 12, 0x4F);
-}
-
-void run_explorefile() {
-    draw_rect(0, 0, 80, 25, 0x07); // Gray/Black
-    print(" [ ExploreFile ] - Search DuckDuckGo (S) ", 0, 0, 0x3F);
-    print(" > kernel.bin [512B] ", 2, 2, 0x07);
-    if(io_base) print(" NIC: RTL8139 READY ", 55, 0, 0x2F);
-}
-
-// --- APP SWITCHER ---
-void refresh_system() {
-    if(current_app == LIGHTPAD) run_lightpad();
-    else if(current_app == APPEL)    run_appel();
-    else if(current_app == OUTVIE)   run_outvie();
-    else if(current_app == PRESENTU) run_presentu();
-    else run_explorefile();
-    print(" 1:LP 2:AP 3:OV 4:PU 5:EX ", 25, 24, 0x0E);
-}
-
-// --- KERNEL ENTRY ---
 void kernel_main() {
-    init_network();
-    refresh_system();
-    
+    refresh_ui();
     while(1) {
-        uint8_t sc = inb(0x60); // Read Keyboard
-        if(sc >= 0x02 && sc <= 0x06) { // Keys 1-5
+        uint8_t sc = inb(0x60);
+        if(sc >= 0x02 && sc <= 0x06) {
             current_app = sc - 0x01;
-            refresh_system();
-            for(int i=0; i<1000000; i++); // Tiny delay
+            refresh_ui();
+            for(int i=0; i<4000000; i++) asm volatile("nop");
         }
     }
 }
