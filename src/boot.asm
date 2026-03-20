@@ -17,7 +17,7 @@ init_pm:
     ; 1. Setup Page Tables (Zero out 0x1000 to 0x5000)
     ; PML4 -> PDPT -> PD -> PT
     mov edi, 0x1000    ; Table location
-    cr3, edi           ; Point CPU to PML4
+    mov cr3, edi           ; Point CPU to PML4 (Page Map Level 4)
     
     ; Simple Identity Map (First 2MB)
     mov dword [0x1000], 0x2003      ; PML4 -> PDPT
