@@ -1,6 +1,8 @@
 ENTRY(start)
 OUTPUT_FORMAT(binary)
-SECTIONS {
+
+SECTIONS
+{
     . = 0x7C00;
     .text : { *(.text) }
     .data : { *(.data) }
