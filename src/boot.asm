@@ -1,49 +1,10 @@
 [bits 16]
-global start
-extern kernel_main
-
-start:
-    jmp short real_start
-    nop
-
-; --- FAT32 BPB for 1.9GB Drive ---
-oem_name           db "PIONEER "
-bytes_per_sector   dw 512
-sectors_per_cluster db 8
-reserved_sectors    dw 32
-fat_count          db 2
-root_entries       dw 0
-total_sectors_16   dw 0
-media_type         db 0xF8
-fat_size_16        dw 0
-sectors_per_track  dw 32
-head_count         dw 64
-hidden_sectors     dd 0
-total_sectors_32   dd 3906250       ; 1.9 GB Limit
-fat_size_32        dd 3800
-ext_flags          dw 0
-fs_version         dw 0
-root_cluster       dd 2
-fs_info            dw 1
-backup_boot        dw 6
-times 12 db 0
-drive_num          db 0x80
-nt_res             db 0
-boot_sig           db 0x29
-volume_id          dd 0x12345678
-volume_label       db "PIONEER OS "
-system_id          db "FAT32   "
-
 real_start:
     cli
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov sp, 0x9000
+    ; ... (Previous segment/stack setup) ...
     lgdt [gdt_descriptor]
     mov eax, cr0
-    or eax, 0x1
+    or eax, 1
     mov cr0, eax
     jmp 0x08:init_pm
 
@@ -52,16 +13,57 @@ init_pm:
     mov ax, 0x10
     mov ds, ax
     mov ss, ax
-    mov es, ax
+
+    ; 1. Setup Page Tables (Zero out 0x1000 to 0x5000)
+    ; PML4 -> PDPT -> PD -> PT
+    mov edi, 0x1000    ; Table location
+    cr3, edi           ; Point CPU to PML4
+    
+    ; Simple Identity Map (First 2MB)
+    mov dword [0x1000], 0x2003      ; PML4 -> PDPT
+    mov dword [0x2000], 0x3003      ; PDPT -> PD
+    mov dword [0x3000], 0x4003      ; PD -> PT
+    
+    ; Fill PT with 512 entries (mapping 2MB)
+    mov ebx, 0x00000003
+    mov ecx, 512
+.set_pt:
+    mov [edi + 0x3000], ebx
+    add ebx, 0x1000
+    add edi, 8
+    loop .set_pt
+
+    ; 2. Enable PAE
+    mov eax, cr4
+    or eax, 1 << 5
+    mov cr4, eax
+
+    ; 3. Enable Long Mode in EFER MSR
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax, 1 << 8
+    wrmsr
+
+    ; 4. Enable Paging (The Final Jump)
+    mov eax, cr0
+    or eax, 1 << 31
+    mov cr0, eax
+
+    jmp 0x08:init_lm
+
+[bits 64]
+init_lm:
+    ; You are now in 64-bit Long Mode.
+    ; Your Sovereign Apps can now use RAX, RBX, etc.
+    extern kernel_main
     call kernel_main
     jmp $
 
-gdt_start: dq 0x0
-gdt_code:  dw 0xffff, 0x0, 0x9a, 0xcf
-gdt_data:  dw 0xffff, 0x0, 0x92, 0xcf
+; Updated GDT for 64-bit
+gdt_start: dq 0
+gdt_code:  dq 0x00209A0000000000 ; 64-bit Code Segment
+gdt_data:  dq 0x0000920000000000 ; 64-bit Data Segment
 gdt_end:
-gdt_descriptor: dw gdt_end - gdt_start - 1
-                dd gdt_start
-
-times 510-($-$$) db 0
-dw 0xaa55
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dq gdt_start
