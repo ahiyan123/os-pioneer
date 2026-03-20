@@ -27,7 +27,7 @@ jobs:
       - name: Headless Test (5 Seconds)
         run: |
           # Runs QEMU for 5s to ensure the kernel doesn't immediate panic
-          timeout 5s qemu-system-i386 -drive format=raw,file=pioneer_os.bin,if=ide -display none || [ $? -eq 124 ]
+          timeout 5s qemu-system-i386 -drive format=raw,file=BOOTX64.EFI,if=ide -display none || [ $? -eq 124 ]
 
       - name: Upload Sovereign Binary
         uses: actions/upload-artifact@v4
