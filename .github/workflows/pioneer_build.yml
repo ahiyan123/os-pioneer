@@ -1,0 +1,70 @@
+name: Pioneer OS Forge
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm gcc-multilib qemu-system-x86
+
+      - name: Forge Binary
+        run: make
+
+      - name: Verify Sovereign Binary
+        run: |
+          if [ -f pioneer_os.bin ]; then
+            echo "Binary exists. Size: $(stat -c%s pioneer_os.bin) bytes"
+          else
+            echo "Forge failed!" && exit 1
+          fi
+
+      - name: Headless Test (5 Seconds)
+        run: |
+          # Runs QEMU for 5s to ensure the kernel doesn't immediate panic
+          timeout 5s qemu-system-i386 -drive format=raw,file=pioneer_os.bin,if=ide -display none || [ $? -eq 124 ]
+
+
+            - name: Cache
+  uses: actions/cache@v5.0.4
+  with:
+    # A list of files, directories, and wildcard patterns to cache and restore
+    path: 
+    # An explicit key for restoring and saving the cache
+    key: 
+    # An ordered multiline string listing the prefix-matched keys, that are used for restoring stale cache if no cache hit occurred for key. Note `cache-hit` returns false in this case.
+    restore-keys: # optional
+    # The chunk size used to split up large files during upload, in bytes
+    upload-chunk-size: # optional
+    # An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms
+    enableCrossOsArchive: # optional, default is false
+    # Fail the workflow if cache entry is not found
+    fail-on-cache-miss: # optional, default is false
+    # Check if a cache entry exists for the given input(s) (key, restore-keys) without downloading the cache
+    lookup-only: # optional, default is false
+    # Run the post step to save the cache even if another step before fails
+    save-always: # optional, default is false
+
+
+            - name: CA Certificate Import
+  # You may pin to the exact commit or the version.
+  # uses: LiquidLogicLabs/git-action-ca-certificate-import@1f17ea69a9189a5f09a243ec66ac07597ee3e1d0
+  uses: LiquidLogicLabs/git-action-ca-certificate-import@v1.0.9
+  with:
+    # Certificate source: file path, URL, or "inline" for direct content
+    certificate-source: 
+    # Certificate content (required when certificate-source is "inline")
+    certificate-body: # optional, default is 
+    # Name for the certificate file (auto-generated if not specified)
+    certificate-name: # optional, default is 
+    # Enable debug output
+    debug: # optional, default is false
+    # Generate buildkit.toml configuration file with CA certificate settings
+    generate-buildkit: # optional, default is false
+          
+                  
