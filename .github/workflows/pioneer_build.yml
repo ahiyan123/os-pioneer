@@ -18,8 +18,8 @@ jobs:
 
       - name: Verify Sovereign Binary
         run: |
-          if [ -f pioneer_os.bin ]; then
-            echo "Binary exists. Size: $(stat -c%s pioneer_os.bin) bytes"
+          if [ -f BOOTX64.EFI ]; then
+            echo "Sovereign EFI exists. Size: $(stat -c%s BOOTX64.EFI) bytes"
           else
             echo "Forge failed!" && exit 1
           fi
